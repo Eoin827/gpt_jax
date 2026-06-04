@@ -1,0 +1,144 @@
+# TODO
+# move things to device if needed
+#
+#
+#
+import equinox as eqx
+import jax
+import jax.numpy as jnp
+import optax
+from jax import nn, random, vmap
+
+with open("input.txt") as f:
+    input_str = f.read()
+
+input_str[:4]
+chars = sorted(list(set(input_str)))
+"".join((chars))
+
+
+stoi = {c: i for i, c in enumerate(chars)}
+itos = {c: i for i, c in stoi.items()}
+encode = lambda x: [stoi[c] for c in x]
+decode = lambda x: "".join([itos[c] for c in x])
+eval_iters = 200
+eval_interval = 300
+max_iters = 3000
+block_size = 8
+batch_size = 4
+lr = 1e-2
+batch_size = 32
+
+data = jnp.array(encode(input_str), dtype=jnp.int32)
+
+n = int(0.9 * len(data))
+train_data = data[:n]
+val_data = data[n:]
+
+
+key = random.PRNGKey(1337)
+
+
+def get_batch(split, key):
+    data = train_data if split == "train" else val_data
+    ix = random.randint(key, (batch_size,), 0, len(data) - block_size)
+    key, subkey = random.split(key)
+    x = jnp.stack([data[i : i + block_size] for i in ix])
+    y = jnp.stack([data[i + 1 : i + block_size + 1] for i in ix])
+    return x, y
+
+
+xb, yb = get_batch("train", key)
+
+
+# @jax.jit
+# can speed this up later idk
+def estimate_loss(model, key):
+    out = {}
+    # eval model or smthn
+    for split in ["train", "val"]:
+        losses = jnp.zeros(eval_iters)
+        for k in range(eval_iters):
+            x, y = get_batch(split, key)
+            key, subkey = random.split(key)
+            logits = vmap(model)(x)
+            B, T, C = logits.shape
+            logits = jnp.reshape(logits, (B * T, C))
+            yb = jnp.reshape(y, B * T)
+            loss = jnp.mean(
+                optax.losses.softmax_cross_entropy_with_integer_labels(logits, yb)
+            )
+            # losses[k] = loss
+            losses = losses.at[k].set(loss)
+        out[split] = losses.mean()
+    return out
+
+
+class BigramLanguageModel(eqx.Module):
+    token_embedding_table: eqx.nn.Embedding
+
+    def __init__(self, vocab_size):
+        self.token_embedding_table = eqx.nn.Embedding(vocab_size, vocab_size, key=key)
+
+    def __call__(self, idx):
+        logits = vmap(self.token_embedding_table)(idx)
+        return logits
+
+    def generate(
+        self, idx, max_tokens_size, key
+    ):  # maybe should return new key or smthing idk
+        for _ in range(max_tokens_size):
+            logits = vmap(self)(idx)
+            logits = logits[:, -1, :]
+            idx_next = jax.random.categorical(key, logits, axis=-1)[:, None]
+            key, subkey = random.split(key)
+            idx = jnp.concat((idx, idx_next), axis=1)
+        return idx
+
+
+@jax.jit
+@jax.grad
+def loss(model, xb, yb):
+    logits = vmap(model)(xb)
+    B, T, C = logits.shape
+    logits = jnp.reshape(logits, (B * T, C))
+    yb = jnp.reshape(yb, B * T)
+    loss = jnp.mean(optax.losses.softmax_cross_entropy_with_integer_labels(logits, yb))
+    return loss
+
+
+hello = BigramLanguageModel(vocab_size=65)
+loss_val = loss(hello, xb, yb)
+optimiser = optax.adam(learning_rate=lr)
+opt_state = optimiser.init(hello)
+
+# NUM_STEP = 30_000
+NUM_STEP = 3
+for i in range(NUM_STEP):
+    if i % eval_interval == 0:
+        lossses = estimate_loss(hello, key)
+        key, subkey = random.split(key)
+        print(f"step: {i}")
+        print(lossses)
+
+    xb, yb = get_batch("train", key)
+    grad = loss(hello, xb, yb)
+    updates, opt_state = optimiser.update(grad, opt_state)
+    hello = eqx.apply_updates(hello, updates)
+
+# logits = vmap(hello)(xb)
+
+# B, T, C = logits.shape
+# logits = jnp.reshape(logits, (B * T, C))
+# yb = jnp.reshape(yb, B * T)
+# loss_val = jnp.mean(optax.losses.softmax_cross_entropy_with_integer_labels(logits, yb))
+# print(loss_val)
+
+
+print(
+    decode(
+        hello.generate(
+            idx=jnp.zeros((1, 1), dtype=jnp.int32), max_tokens_size=100, key=key
+        )[0].tolist()
+    )
+)
