@@ -112,8 +112,8 @@ loss_val = loss(hello, xb, yb)
 optimiser = optax.adam(learning_rate=lr)
 opt_state = optimiser.init(hello)
 
-# NUM_STEP = 30_000
-NUM_STEP = 3
+NUM_STEP = 30_000
+# NUM_STEP = 3
 for i in range(NUM_STEP):
     if i % eval_interval == 0:
         lossses = estimate_loss(hello, key)
@@ -138,7 +138,7 @@ for i in range(NUM_STEP):
 print(
     decode(
         hello.generate(
-            idx=jnp.zeros((1, 1), dtype=jnp.int32), max_tokens_size=100, key=key
+            idx=jnp.zeros((1, 1), dtype=jnp.int32), max_tokens_size=200, key=key
         )[0].tolist()
     )
 )
