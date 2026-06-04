@@ -112,7 +112,8 @@ loss_val = loss(hello, xb, yb)
 optimiser = optax.adam(learning_rate=lr)
 opt_state = optimiser.init(hello)
 
-NUM_STEP = 30_000
+# NUM_STEP = 30_000
+NUM_STEP = 12_000
 # NUM_STEP = 3
 for i in range(NUM_STEP):
     if i % eval_interval == 0:
