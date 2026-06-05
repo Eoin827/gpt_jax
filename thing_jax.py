@@ -21,7 +21,7 @@ eval_interval = 300
 max_iters = 3000
 block_size = 8
 batch_size = 4
-lr = 1e-2
+lr = 1e-3
 batch_size = 32
 NUM_STEP = 3000
 n_emb = 32
@@ -70,10 +70,37 @@ def estimate_loss(model, key):
     return out
 
 
+class SelfAttention(eqx.Module):
+    K: eqx.nn.Linear
+    Q: eqx.nn.Linear
+    V: eqx.nn.Linear
+
+    def __init__(self, head_size, key):
+        key, subkey = random.split(key)
+        self.K = eqx.nn.Linear(n_emb, head_size, use_bias=False, key=key)
+        key, subkey = random.split(key)
+        self.Q = eqx.nn.Linear(n_emb, head_size, use_bias=False, key=key)
+        key, subkey = random.split(key)
+        self.V = eqx.nn.Linear(n_emb, head_size, use_bias=False, key=key)
+
+    def __call__(self, x):
+        keys = self.K(x)[:, None]
+        queries = self.Q(x)[:, None]
+        scores = queries @ keys.T
+        # print("v1", scores.shape)
+        scores = scores * keys.shape[-1] ** -0.5
+        # print("yo", x.shape, scores.shape, queries.shape, keys.shape)
+        tril = jnp.tril(scores) + jnp.triu(jnp.full_like(scores, float("-inf")), k=1)
+
+        softed = jax.nn.softmax(tril)
+        return softed @ self.V(x)
+
+
 class BigramLanguageModel(eqx.Module):
     token_embedding_table: eqx.nn.Embedding
     position_embedding_table: eqx.nn.Embedding
     linear_proj: eqx.nn.Linear
+    attention: SelfAttention
 
     def __init__(self, vocab_size, key):
         key, subkey = random.split(key)
@@ -82,12 +109,14 @@ class BigramLanguageModel(eqx.Module):
         self.position_embedding_table = eqx.nn.Embedding(block_size, n_emb, key=key)
         key, subkey = random.split(key)
         self.linear_proj = eqx.nn.Linear(n_emb, vocab_size, key=key)
+        self.attention = SelfAttention(n_emb, key)
 
     def __call__(self, idx):
         (T,) = idx.shape
         logits = vmap(self.token_embedding_table)(idx)
         pos_enc = vmap(self.position_embedding_table)(jnp.arange(0, T))
         logits = logits + pos_enc
+        logits = vmap(self.attention)(logits)
         logits = vmap(self.linear_proj)(logits)
         return logits
 
@@ -95,7 +124,7 @@ class BigramLanguageModel(eqx.Module):
         self, idx, max_tokens_size, key
     ):  # maybe should return new key or smthing idk
         for _ in range(max_tokens_size):
-            logits = vmap(self)(idx)
+            logits = vmap(self)(idx[:, -block_size:])
             logits = logits[:, -1, :]
             idx_next = jax.random.categorical(key, logits, axis=-1)[:, None]
             key, subkey = random.split(key)
