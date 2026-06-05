@@ -75,7 +75,7 @@ class BigramLanguageModel(eqx.Module):
     position_embedding_table: eqx.nn.Embedding
     linear_proj: eqx.nn.Linear
 
-    def __init__(self, vocab_size):
+    def __init__(self, vocab_size, key):
         key, subkey = random.split(key)
         self.token_embedding_table = eqx.nn.Embedding(vocab_size, n_emb, key=key)
         key, subkey = random.split(key)
@@ -114,7 +114,7 @@ def loss(model, xb, yb):
     return loss
 
 
-hello = BigramLanguageModel(vocab_size=65)
+hello = BigramLanguageModel(vocab_size=65, key=key)
 loss_val = loss(hello, xb, yb)
 optimiser = optax.adam(learning_rate=lr)
 opt_state = optimiser.init(hello)
