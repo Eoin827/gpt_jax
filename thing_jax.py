@@ -1,8 +1,3 @@
-# TODO
-# move things to device if needed
-#
-#
-#
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -28,6 +23,7 @@ block_size = 8
 batch_size = 4
 lr = 1e-2
 batch_size = 32
+NUM_STEP = 12_000
 
 data = jnp.array(encode(input_str), dtype=jnp.int32)
 
@@ -68,7 +64,6 @@ def estimate_loss(model, key):
             loss = jnp.mean(
                 optax.losses.softmax_cross_entropy_with_integer_labels(logits, yb)
             )
-            # losses[k] = loss
             losses = losses.at[k].set(loss)
         out[split] = losses.mean()
     return out
@@ -112,9 +107,6 @@ loss_val = loss(hello, xb, yb)
 optimiser = optax.adam(learning_rate=lr)
 opt_state = optimiser.init(hello)
 
-# NUM_STEP = 30_000
-NUM_STEP = 12_000
-# NUM_STEP = 3
 for i in range(NUM_STEP):
     if i % eval_interval == 0:
         lossses = estimate_loss(hello, key)
@@ -123,17 +115,10 @@ for i in range(NUM_STEP):
         print(lossses)
 
     xb, yb = get_batch("train", key)
+    key, subkey = random.split(key)
     grad = loss(hello, xb, yb)
     updates, opt_state = optimiser.update(grad, opt_state)
     hello = eqx.apply_updates(hello, updates)
-
-# logits = vmap(hello)(xb)
-
-# B, T, C = logits.shape
-# logits = jnp.reshape(logits, (B * T, C))
-# yb = jnp.reshape(yb, B * T)
-# loss_val = jnp.mean(optax.losses.softmax_cross_entropy_with_integer_labels(logits, yb))
-# print(loss_val)
 
 
 print(
