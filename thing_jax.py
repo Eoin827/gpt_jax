@@ -23,7 +23,7 @@ block_size = 8
 batch_size = 4
 lr = 1e-3
 batch_size = 32
-NUM_STEP = 3000
+NUM_STEP = 5000
 n_emb = 32
 
 data = jnp.array(encode(input_str), dtype=jnp.int32)
