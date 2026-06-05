@@ -24,6 +24,7 @@ batch_size = 4
 lr = 1e-2
 batch_size = 32
 NUM_STEP = 3000
+n_emb = 32
 
 data = jnp.array(encode(input_str), dtype=jnp.int32)
 
@@ -71,12 +72,23 @@ def estimate_loss(model, key):
 
 class BigramLanguageModel(eqx.Module):
     token_embedding_table: eqx.nn.Embedding
+    position_embedding_table: eqx.nn.Embedding
+    linear_proj: eqx.nn.Linear
 
     def __init__(self, vocab_size):
-        self.token_embedding_table = eqx.nn.Embedding(vocab_size, vocab_size, key=key)
+        key, subkey = random.split(key)
+        self.token_embedding_table = eqx.nn.Embedding(vocab_size, n_emb, key=key)
+        key, subkey = random.split(key)
+        self.position_embedding_table = eqx.nn.Embedding(block_size, n_emb, key=key)
+        key, subkey = random.split(key)
+        self.linear_proj = eqx.nn.Linear(n_emb, vocab_size, key=key)
 
     def __call__(self, idx):
+        (T,) = idx.shape
         logits = vmap(self.token_embedding_table)(idx)
+        pos_enc = vmap(self.position_embedding_table)(jnp.arange(0, T))
+        logits = logits + pos_enc
+        logits = vmap(self.linear_proj)(logits)
         return logits
 
     def generate(
