@@ -147,7 +147,8 @@ hello = BigramLanguageModel(vocab_size=65, key=key)
 loss_val = loss(hello, xb, yb)
 optimiser = optax.adam(learning_rate=lr)
 opt_state = optimiser.init(hello)
-
+leaves = jax.tree.leaves(hello)
+print("LEAVES", leaves[0].devices())
 for i in range(NUM_STEP):
     if i % eval_interval == 0:
         lossses = estimate_loss(hello, key)
